@@ -56,8 +56,12 @@
   .tool-info{flex:1; min-width:0;}
   .tool-name{font-size:14px; font-weight:bold;}
   .tool-desc{font-size:10.5px; color:var(--muted); line-height:1.4;}
-  .tool-cost{font-size:12px; color:var(--gold); font-weight:bold;}
-  .tool-cost.lack{color:var(--red);}
+  .stockline{display:flex; align-items:center; gap:5px; margin-top:6px; flex-wrap:wrap;}
+  .stock{display:flex; gap:2px; align-items:center;}
+  .stock canvas{width:14px;height:14px;image-rendering:pixelated;image-rendering:crisp-edges;
+    background:#23232e;border:1px solid #3f3f52;border-radius:2px;}
+  .cd{font-size:10px;color:var(--accent);font-weight:bold;white-space:nowrap;}
+  .tool.empty{opacity:.5;}
   .help{font-size:11.5px; color:var(--muted); line-height:1.8;}
   .help b{color:var(--text);}
   .help .dot{display:inline-block; width:8px; height:8px; vertical-align:baseline;}
@@ -66,10 +70,9 @@
 </head>
 <body>
   <h1>🐭 农场迷宫灭鼠 · 策略像素</h1>
-  <div class="subtitle">自由游走 · 公母繁殖 · 限时清除</div>
+  <div class="subtitle">自由游走 · 边界环绕 · 公母繁殖 · 限时清除</div>
 
   <div class="topbar">
-    <div class="stat coin">🪙 金币 <b id="coins">120</b></div>
     <div class="stat goal">🎯 击杀 <b id="kills">0</b>/<span id="killTarget">0</span></div>
     <div class="stat time">⏱ 时间 <b id="time">0:00</b></div>
     <div class="stat rnd">🔁 回合 <b id="round">1</b></div>
@@ -97,29 +100,29 @@
 
     <div class="sidebar">
       <div class="panel">
-        <h3>选择道具（左键放置 / 右键拆除/引爆炸弹）</h3>
+        <h3>选择道具（左键放置 / 右键拆除）</h3>
         <div class="tool" data-id="1" id="tool1">
           <canvas width="48" height="48"></canvas>
           <div class="tool-info">
             <div class="tool-name">毒鼠强</div>
             <div class="tool-desc">老鼠踩上立即死亡（一次性）</div>
-            <div class="tool-cost afford">💰 20</div>
+            <div class="stockline"><span class="stock" id="stock1"></span><span class="cd" id="cd1"></span></div>
           </div>
         </div>
         <div class="tool" data-id="2" id="tool2">
           <canvas width="48" height="48"></canvas>
           <div class="tool-info">
             <div class="tool-name">炸弹</div>
-            <div class="tool-desc">点两次：先放置再引爆，灭 4 向 3 格</div>
-            <div class="tool-cost afford">💰 50</div>
+            <div class="tool-desc">放置后 2 秒自动爆炸，灭 4 向 3 格</div>
+            <div class="stockline"><span class="stock" id="stock2"></span><span class="cd" id="cd2"></span></div>
           </div>
         </div>
         <div class="tool" data-id="3" id="tool3">
           <canvas width="48" height="48"></canvas>
           <div class="tool-info">
             <div class="tool-name">路障</div>
-            <div class="tool-desc">堵住迷宫通道，耐久 3 次撞击</div>
-            <div class="tool-cost afford">💰 30</div>
+            <div class="tool-desc">堵住通道，耐久 3 次撞击</div>
+            <div class="stockline"><span class="stock" id="stock3"></span><span class="cd" id="cd3"></span></div>
           </div>
         </div>
       </div>
@@ -136,24 +139,26 @@
       <div class="panel">
         <h3>玩法说明</h3>
         <div class="help">
-          <b>·</b> 关卡目标：限时内清除指定数量老鼠。<br>
-          <b>·</b> 迷宫无出入口，老鼠全图自由游走。<br>
+          <b>·</b> 目标：限时内清除指定数量老鼠。<br>
+          <b>·</b> 迷宫无边界，老鼠出去会从对面进来。<br>
           <b>·</b> 老鼠会繁殖，抓紧下手。<br>
-          <b>·</b> 右键拆除道具 / 引爆已放炸弹。<br>
-          <b>·</b> 击杀掉落金币，越到后面目标越多。
+          <b>·</b> 道具免费，用掉后 <b>10 秒</b>自动补 1 个。<br>
+          <b>·</b> 炸弹放置后自动引爆；右键拆除道具。
         </div>
       </div>
     </div>
   </div>
-  <div class="foot">击杀掉金币 · 清理老鼠养分的迷宫 · 撑过每一回合</div>
+  <div class="foot">清除迷宫里的老鼠 · 撑过每一回合 · 道具免费、冷却补充</div>
 
 <script>
 "use strict";
 /* ================= 基础常量 ================= */
 const N = 15, TILE = 10;    // 15×15 网格
-const WALL_DENSITY = 0.32;  // 内部墙目标密度（连通性优先，实际可能更少）
+const WALL_DENSITY = 0.28;  // 墙目标密度（无边界墙；连通性优先，实际可能更少）
 const IDLE=0, POISON=1, BOMB=2, BARRIER=3;
-const COSTS = {1:20, 2:50, 3:30};
+const INIT_STOCK = 6;       // 每种道具初始 / 上限数量
+const COOLDOWN = 10;        // 道具补充冷却（秒）
+const FUSE_TIME = 2;        // 炸弹放置后自动引爆延迟（秒）
 const GROW_STEPS = 30;      // 成长所需移动格数
 const LITTER = 3;           // 一窝小老鼠数量
 const POP_CAP = 35;         // 老鼠种群上限（15×15 地图容量小）
@@ -167,40 +172,43 @@ ctx.imageSmoothingEnabled = false;
 canvas.width = N*TILE; canvas.height = N*TILE;
 
 /* ================= 状态 ================= */
-let wall=[], item=[], dur=[];
+let wall=[], item=[], dur=[], fuse=[];
 let rats=[], effects=[];
-let coins=120, round=0, kills=0, killTarget=0, timeLeft=TIME_LIMIT;
+let stock={1:INIT_STOCK,2:INIT_STOCK,3:INIT_STOCK}, cooldown={1:0,2:0,3:0};
+let round=0, kills=0, killTarget=0, timeLeft=TIME_LIMIT;
 let score=0;
 let selected=0, state='idle';
 let hintTimer=0, hintMsg='', hover=null, ambientTimer=0;
 let audioCtx=null;
 const key=(x,y)=>y*N+x;
-const inb=(x,y)=>x>=0&&y>=0&&x<N&&y<N;
+const wrapMod=(v,n)=>((v%n)+n)%n;
+const wrapDist=(a,b)=>Math.min(Math.abs(a-b), N-Math.abs(a-b));
+const gridX=fx=>wrapMod(Math.round((fx-TILE/2)/TILE),N);
+const gridY=fy=>wrapMod(Math.round((fy-TILE/2)/TILE),N);
 
 /* ================= 地图生成（随机墙 + 连通性保证） ================= */
 function carveMaze(){
-  wall=[]; item=[]; dur=[];
+  wall=[]; item=[]; dur=[]; fuse=[];
   for(let y=0;y<N;y++){
     wall.push(new Array(N).fill(false));
     item.push(new Array(N).fill(IDLE));
     dur.push(new Array(N).fill(0));
+    fuse.push(new Array(N).fill(0));
   }
-  // 外框全墙
-  for(let x=0;x<N;x++){ wall[0][x]=true; wall[N-1][x]=true; }
-  for(let y=0;y<N;y++){ wall[y][0]=true; wall[y][N-1]=true; }
-  // 内部随机墙：每插入一面墙都校验全连通，若孤立出区域则回退。
-  // 这样保证所有无墙格子彼此连通，老鼠能到达任意非墙位置。
+  // 无边界墙：四周开放，老鼠可跨边界环绕到对面。
+  // 内部随机墙：每插入一面墙都做全连通校验（含环绕邻接），
+  // 若某墙会孤立出区域则回退，保证老鼠能到达任意非墙位置。
   const cells=[];
-  for(let y=1;y<N-1;y++) for(let x=1;x<N-1;x++) cells.push([x,y]);
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++) cells.push([x,y]);
   shuffle(cells);
   const target = Math.floor(cells.length*WALL_DENSITY);
   let added=0;
   for(const [x,y] of cells){
     if(added>=target) break;
     // 让墙更连片，贴近迷宫质感：周围墙越多越倾向为墙
-    const wallNb = (y>0&&wall[y-1][x]) + (y<N-1&&wall[y+1][x]) +
-                   (x>0&&wall[y][x-1]) + (x<N-1&&wall[y][x+1]);
-    if(wallNb>0 && Math.random()<0.3) continue; // 少量随机，避免纯对角
+    const wallNb = (wall[wrapMod(y-1,N)][x]) + (wall[wrapMod(y+1,N)][x]) +
+                   (wall[y][wrapMod(x-1,N)]) + (wall[y][wrapMod(x+1,N)]);
+    if(wallNb>0 && Math.random()<0.3) continue; // 少量随机
     wall[y][x]=true;
     if(!allConnected()) wall[y][x]=false; else added++;
   }
@@ -210,21 +218,20 @@ function allConnected(){
   const seen=new Uint8Array(N*N);
   // 找到第一个地板作为连通种子
   let seed=-1;
-  for(let y=1;y<N-1&&seed<0;y++) for(let x=1;x<N-1;x++)
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
     if(!wall[y][x]){ seed=y*N+x; break; }
   if(seed<0) return true; // 全墙（不会出现）
   seen[seed]=1; const stack=[seed];
   while(stack.length){
     const c=stack.pop(), cx=c%N, cy=(c/N)|0;
     for(const [d1,d2] of [[1,0],[-1,0],[0,1],[0,-1]]){
-      const nx=cx+d1, ny=cy+d2;
-      if(nx<1||ny<1||nx>N-2||ny>N-2) continue;
+      const nx=wrapMod(cx+d1,N), ny=wrapMod(cy+d2,N);
       if(wall[ny][nx]) continue;
       const nk=ny*N+nx; if(seen[nk]) continue;
       seen[nk]=1; stack.push(nk);
     }
   }
-  for(let y=1;y<N-1;y++) for(let x=1;x<N-1;x++)
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++)
     if(!wall[y][x] && !seen[y*N+x]) return false;
   return true;
 }
@@ -255,7 +262,8 @@ const sfxWin=()=>{tone(392,.1,'square',.05);tone(523,.1,'square',.05);tone(659,.
 
 /* ================= 老鼠创建 ================= */
 function newRat(gx,gy,size,gender){
-  return { gx,gy, px:gx*TILE+TILE/2, py:gy*TILE+TILE/2, tx:gx*TILE+TILE/2, ty:gy*TILE+TILE/2,
+  const fx=gx*TILE+TILE/2, fy=gy*TILE+TILE/2;
+  return { gx,gy, fx,fy, px:fx, py:fy, tfx:fx, tfy:fy,
     state:'wait', wait:Math.random()*300, dir:0, face:(Math.random()<.5?1:-1),
     gender, size, steps:0, breedCd:0, phase:Math.random()*6.28, dead:false };
 }
@@ -297,8 +305,8 @@ function chooseMove(r){
   const dd=[[1,0],[-1,0],[0,1],[0,-1]];
   for(let i=0;i<4;i++){
     const [dx,dy]=dd[i];
-    const nx=r.gx+dx, ny=r.gy+dy;
-    if(!inb(nx,ny) || wall[ny][nx]) continue;
+    const nx=wrapMod(r.gx+dx,N), ny=wrapMod(r.gy+dy,N);
+    if(wall[ny][nx]) continue;
     let w=10;
     if(i===r.dir) w+=7;      // 惯性
     else if(Math.abs(i-r.dir)===2) w+=2; // 可回头
@@ -320,7 +328,8 @@ function roundStart(n){
   round=n; kills=0;
   killTarget = 10 + n*6;              // 回合1=16, 2=22, ...
   timeLeft = TIME_LIMIT + (n-1)*15;   // 时间稍加宽
-  coins = Math.max(coins, 120 + (n-1)*30);
+  stock={1:INIT_STOCK,2:INIT_STOCK,3:INIT_STOCK};
+  cooldown={1:0,2:0,3:0};
   ambientTimer = 6000;
   spawnInitial(6 + n);
   updateHUD(); updateToolsUI();
@@ -337,10 +346,11 @@ function checkRoundProgress(){
 function placeItem(x,y,type){
   if(wall[y][x]){ sfxCant(); showHint('那是墙'); return false; }
   if(item[y][x]!==IDLE){ showHint('该格已有道具'); return false; }
-  if(coins<COSTS[type]){ sfxCant(); showHint('金币不足'); return false; }
-  coins-=COSTS[type];
+  if(stock[type]<=0){ sfxCant(); showHint('该道具暂无库存，等待冷却'); return false; }
+  stock[type]--; cooldown[type]=COOLDOWN;
   item[y][x]=type;
   if(type===BARRIER) dur[y][x]=3;
+  if(type===BOMB) fuse[y][x]=FUSE_TIME;
   sfxPlace();
   if(type===POISON){
     const hit=rats.filter(r=>r.gx===x&&r.gy===y&&!r.dead);
@@ -351,21 +361,21 @@ function placeItem(x,y,type){
 }
 function removeItem(x,y){
   const t=item[y][x]; if(t===IDLE) return;
-  coins+=Math.floor(COSTS[t]/2); item[y][x]=IDLE; dur[y][x]=0;
+  item[y][x]=IDLE; dur[y][x]=0; fuse[y][x]=0;
   tone(300,.05,'square',.04); updateToolsUI();
 }
 function detonate(x,y){
   if(item[y][x]!==BOMB) return;
-  item[y][x]=IDLE; sfxBoom();
+  item[y][x]=IDLE; fuse[y][x]=0; sfxBoom();
   effects.push({type:'boom', x:x*TILE+TILE/2, y:y*TILE+TILE/2, t:0});
-  const hit=rats.filter(r=>!r.dead && (Math.abs(r.gx-x)+Math.abs(r.gy-y))<=3);
+  const hit=rats.filter(r=>!r.dead && (wrapDist(r.gx,x)+wrapDist(r.gy,y))<=3);
   if(hit.length) killRats(hit);
 }
 function killRats(list){
   for(const r of list){
     if(r.dead) continue;
     r.dead=true;
-    kills++; coins+=15; score+=10;
+    kills++; score+=10;
     effects.push({type:'puff', x:r.px, y:r.py, t:0, color:r.size==='baby'?'#fff3d8':'#ffb060'});
     sfxKill();
   }
@@ -376,7 +386,7 @@ function landOn(r){
   // 踩到毒鼠强
   if(item[r.gy][r.gx]===POISON){
     item[r.gy][r.gx]=IDLE;
-    r.dead=true; kills++; coins+=15; score+=10;
+    r.dead=true; kills++; score+=10;
     effects.push({type:'puff', x:r.px, y:r.py, t:0, color:'#b6d7a8'});
     sfxKill();
     updateHUD(); updateToolsUI();
@@ -428,6 +438,26 @@ function update(dt){
       if(rats.length < POP_CAP) makePair();
     }
 
+    // 道具冷却补充：库存不满时倒计时，到点 +1
+    for(let t=1;t<=3;t++){
+      if(stock[t] < INIT_STOCK){
+        cooldown[t] -= dt;
+        if(cooldown[t] <= 0){
+          stock[t]++;
+          cooldown[t] = (stock[t] < INIT_STOCK) ? COOLDOWN : 0;
+          updateStockUI();
+        }
+      }
+    }
+
+    // 定时炸弹倒计时，到点自动引爆
+    for(let y=0;y<N;y++) for(let x=0;x<N;x++){
+      if(item[y][x]===BOMB){
+        fuse[y][x]-=dt;
+        if(fuse[y][x]<=0) detonate(x,y);
+      }
+    }
+
     const now=performance.now();
     for(const r of rats){
       if(r.dead) continue;
@@ -444,27 +474,28 @@ function update(dt){
           effects.push({type:'bump', x:mv.nx*TILE+TILE/2, y:mv.ny*TILE+TILE/2, t:0});
           if(dur[mv.ny][mv.nx]<=0){ item[mv.ny][mv.nx]=IDLE; dur[mv.ny][mv.nx]=0; }
           r.dir = (mv.dx===-1||mv.dx===1)? mv.dx : r.dir;
-          r.wait = 420+Math.random()*260; // 撞墙后停顿重新找路
+          r.wait = 420+Math.random()*260; // 撞后重新找路
           continue;
         }
-        // 正常移动
-        r.tx=mv.nx*TILE+TILE/2; r.ty=mv.ny*TILE+TILE/2;
+        // 正常移动（沿方向连续移动，跨边界时环绕到对面）
+        r.tfx=r.fx+mv.dx*TILE; r.tfy=r.fy+mv.dy*TILE;
         if(mv.dx!==0) r.face=mv.dx;
         r.dir = (mv.dx===1)?0 : (mv.dx===-1)?1 : (mv.dy===1)?2 : 3;
         r.state='move';
       } else { // move
-        const dx=r.tx-r.px, dy=r.ty-r.py;
+        const dx=r.tfx-r.fx, dy=r.tfy-r.fy;
         const dist=Math.hypot(dx,dy);
         const step=80*dt;
         if(dist<=step){
-          r.px=r.tx; r.py=r.ty;
-          r.gx=Math.round((r.px-TILE/2)/TILE);
-          r.gy=Math.round((r.py-TILE/2)/TILE);
+          r.fx=r.tfx; r.fy=r.tfy;
+          r.gx=gridX(r.fx); r.gy=gridY(r.fy);
+          r.px=wrapMod(r.fx,N*TILE); r.py=wrapMod(r.fy,N*TILE);
           r.state='wait';
           r.wait=150+Math.random()*350;
           landOn(r);
         } else {
-          r.px+=dx/dist*step; r.py+=dy/dist*step;
+          r.fx+=dx/dist*step; r.fy+=dy/dist*step;
+          r.px=wrapMod(r.fx,N*TILE); r.py=wrapMod(r.fy,N*TILE);
         }
       }
     }
@@ -601,7 +632,17 @@ function render(now){
   for(let y=0;y<N;y++)for(let x=0;x<N;x++){
     const t=item[y][x], cx=x*TILE+TILE/2, cy=y*TILE+TILE/2;
     if(t===POISON) drawSprite(SPR_POISON,cx,cy,false);
-    else if(t===BOMB) drawSprite(SPR_BOMB,cx,cy,false);
+    else if(t===BOMB){
+      drawSprite(SPR_BOMB,cx,cy,false);
+      // 倒计时提示 + 快爆炸时闪烁
+      ctx.fillStyle='#ff5a5a'; ctx.font='bold 8px monospace'; ctx.textAlign='center';
+      ctx.fillText(String(Math.ceil(fuse[y][x])), cx, cy-5);
+      ctx.textAlign='left';
+      if(fuse[y][x]<=0.6 && (Math.floor(now*12)%2===0)){
+        ctx.strokeStyle='#ff5a5a'; ctx.lineWidth=1;
+        ctx.strokeRect(x*TILE+0.5,y*TILE+0.5,TILE-1,TILE-1);
+      }
+    }
     else if(t===BARRIER){
       drawSprite(SPR_BARRIER,cx,cy,false);
       for(let i=0;i<dur[y][x];i++){ ctx.fillStyle='#d8b64a'; ctx.fillRect(x*TILE+4+i*3,y*TILE+12,2,2); }
@@ -618,7 +659,7 @@ function render(now){
       else if(selected===BOMB) drawSprite(SPR_BOMB,cx,cy,false);
       else if(selected===BARRIER) drawSprite(SPR_BARRIER,cx,cy,false);
       ctx.globalAlpha=1;
-      ctx.strokeStyle = coins<COSTS[selected]?'#ff5a5a':'#6db6ff';
+      ctx.strokeStyle = stock[selected]<=0?'#ff5a5a':'#6db6ff';
       ctx.lineWidth=1; ctx.strokeRect(x*TILE+0.5,y*TILE+0.5,TILE-1,TILE-1);
     }
   }
@@ -661,7 +702,6 @@ function render(now){
 
 /* ================= HUD ================= */
 function updateHUD(){
-  document.getElementById('coins').textContent=coins;
   document.getElementById('kills').textContent=kills;
   document.getElementById('killTarget').textContent=killTarget;
   document.getElementById('round').textContent=round;
@@ -669,14 +709,39 @@ function updateHUD(){
   const tEl=document.getElementById('time');
   tEl.textContent=m+':'+String(s).padStart(2,'0');
   tEl.style.color = timeLeft<15? '#ff8060':'' ;
+  for(let t=1;t<=3;t++){
+    const cdEl=document.getElementById('cd'+t);
+    if(cdEl){
+      cdEl.textContent = (stock[t] < INIT_STOCK) ? ('⏳ '+Math.max(0,Math.ceil(cooldown[t]))+'s') : '';
+    }
+  }
 }
 function updateToolsUI(){
   for(let t=1;t<=3;t++){
     const el=document.getElementById('tool'+t);
-    const cost=el.querySelector('.tool-cost');
-    cost.textContent='💰 '+COSTS[t];
-    cost.className='tool-cost '+(coins>=COSTS[t]?'':'lack');
     el.classList.toggle('selected',selected===t);
+    el.classList.toggle('empty',stock[t]<=0);
+  }
+  updateStockUI();
+}
+function updateStockUI(){
+  for(let t=1;t<=3;t++){
+    const box=document.getElementById('stock'+t);
+    box.innerHTML='';
+    for(let i=0;i<stock[t];i++){
+      const c=document.createElement('canvas'); c.width=12; c.height=12;
+      drawMiniIcon(c, t);
+      box.appendChild(c);
+    }
+  }
+}
+function drawMiniIcon(cv,type){
+  const c=cv.getContext('2d'); c.imageSmoothingEnabled=false;
+  c.clearRect(0,0,cv.width,cv.height);
+  const spr=type===POISON?SPR_POISON:type===BOMB?SPR_BOMB:SPR_BARRIER;
+  for(let r=0;r<spr.length;r++)for(let col=0;col<spr[r].length;col++){
+    const ch=spr[r][col]; if(ch==='.'||!PAL[ch])continue;
+    c.fillStyle=PAL[ch]; c.fillRect(col,r,1,1);
   }
 }
 function showHint(m){hintMsg=m;hintTimer=2;}
@@ -692,14 +757,12 @@ canvas.addEventListener('mousemove',e=>hover=cellFromEvent(e));
 canvas.addEventListener('mouseleave',()=>hover=null);
 canvas.addEventListener('click',e=>{
   ensureAudio(); const c=cellFromEvent(e); if(!c||state!=='running')return;
-  if(item[c.y][c.x]===BOMB && !selected){ detonate(c.x,c.y); return; }
   if(selected) placeItem(c.x,c.y,selected);
 });
 canvas.addEventListener('contextmenu',e=>{
   e.preventDefault(); ensureAudio();
   const c=cellFromEvent(e); if(!c||state!=='running')return;
-  if(item[c.y][c.x]===BOMB) detonate(c.x,c.y);
-  else if(item[c.y][c.x]!==IDLE) removeItem(c.x,c.y);
+  if(item[c.y][c.x]!==IDLE) removeItem(c.x,c.y);
 });
 
 /* ================= 按钮 ================= */
@@ -731,7 +794,9 @@ function startRun(n){
   showHint('清除 '+killTarget+' 只老鼠再走！');
 }
 function reset(){
-  score=0; coins=120; round=0; kills=0; killTarget=0; timeLeft=TIME_LIMIT; selected=0;
+  score=0; round=0; kills=0; killTarget=0; timeLeft=TIME_LIMIT; selected=0;
+  stock={1:INIT_STOCK,2:INIT_STOCK,3:INIT_STOCK};
+  cooldown={1:0,2:0,3:0};
   state='idle';
   carveMaze(); rats=[]; effects=[];
   document.getElementById('overlayOver').classList.add('hidden');
