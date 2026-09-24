@@ -150,13 +150,13 @@
 <script>
 "use strict";
 /* ================= 基础常量 ================= */
-const N = 40, TILE = 10;
+const N = 15, TILE = 10;    // 15×15 网格
 const WALL_DENSITY = 0.32;  // 内部墙目标密度（连通性优先，实际可能更少）
 const IDLE=0, POISON=1, BOMB=2, BARRIER=3;
 const COSTS = {1:20, 2:50, 3:30};
 const GROW_STEPS = 30;      // 成长所需移动格数
 const LITTER = 3;           // 一窝小老鼠数量
-const POP_CAP = 85;         // 老鼠种群上限
+const POP_CAP = 35;         // 老鼠种群上限（15×15 地图容量小）
 const TIME_LIMIT = 90;      // 每回合限时（秒）
 const FINAL_ROUND = 5;      // 通关所需回合数（打到第6回合=通关）
 const MATE_CD = 5500;       // 繁殖冷却（毫秒）
