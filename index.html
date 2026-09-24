@@ -1,0 +1,753 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>农场迷宫灭鼠 · 策略像素游戏</title>
+<style>
+  :root{ --bg:#1b1b24; --panel:#262633; --panel2:#2f2f40; --border:#3f3f52;
+    --text:#e8e6df; --muted:#9a97a8; --gold:#f5c542; --red:#ff5a5a; --green:#5adf6b; --accent:#6db6ff; }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{ background:radial-gradient(circle at 50% 0%, #2a2a3a 0%, #15151d 70%);
+    color:var(--text); font-family:"Courier New","PingFang SC","Microsoft YaHei",monospace;
+    min-height:100vh; display:flex; flex-direction:column; align-items:center;
+    padding:16px; gap:10px; -webkit-user-select:none; user-select:none; }
+  h1{ margin:0; font-size:21px; letter-spacing:2px; color:var(--gold);
+    text-shadow:0 2px 0 #000, 0 0 12px rgba(245,197,66,.25); }
+  .subtitle{color:var(--muted); font-size:12px; letter-spacing:1px;}
+  .topbar{ display:flex; gap:14px; align-items:center; flex-wrap:wrap; justify-content:center;
+    background:var(--panel); border:2px solid var(--border); border-radius:10px; padding:8px 16px;
+    box-shadow:0 4px 0 rgba(0,0,0,.35); }
+  .stat{display:flex; align-items:center; gap:6px; font-size:13px; font-weight:bold;}
+  .stat b{font-size:15px;}
+  .coin{color:var(--gold);} .goal{color:var(--accent);} .time{color:var(--red);}
+  .rnd{color:var(--green);} .score{color:var(--green);}
+  button.btn{ font-family:inherit; cursor:pointer; font-weight:bold; letter-spacing:1px;
+    background:#3a3a4e; color:var(--text); border:2px solid var(--border); border-radius:8px;
+    padding:7px 16px; font-size:13px; box-shadow:0 3px 0 rgba(0,0,0,.4);
+    transition:transform .05s, background .15s; }
+  button.btn:hover{background:#4a4a62;}
+  button.btn:active{transform:translateY(2px); box-shadow:none;}
+  .main{ display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap; justify-content:center; }
+  .stage-wrap{ position:relative; background:var(--panel); border:2px solid var(--border);
+    border-radius:10px; padding:10px; box-shadow:0 6px 0 rgba(0,0,0,.4); }
+  canvas#game{ display:block; image-rendering:pixelated; image-rendering:crisp-edges;
+    border:2px solid #000; border-radius:4px; cursor:crosshair;
+    width:min(600px, calc(100vw - 80px)); aspect-ratio:1/1; height:auto; }
+  .overlay{ position:absolute; inset:10px; display:flex; flex-direction:column; align-items:center;
+    justify-content:center; gap:12px; background:rgba(10,10,16,.86); border-radius:4px;
+    text-align:center; padding:20px; }
+  .overlay.hidden{display:none;}
+  .overlay h2{margin:0; font-size:19px; letter-spacing:1px;}
+  .overlay p{margin:0; color:var(--muted); font-size:12px; line-height:1.7;}
+  button.btn.primary{ background:#b8912f; border-color:#d8b64a; color:#1a1405; }
+  button.btn.primary:hover{background:#d2a83c;}
+  .sidebar{ width:230px; display:flex; flex-direction:column; gap:12px; }
+  .panel{ background:var(--panel); border:2px solid var(--border); border-radius:10px;
+    padding:12px; box-shadow:0 4px 0 rgba(0,0,0,.35); }
+  .panel h3{ margin:0 0 8px; font-size:13px; letter-spacing:1px; color:var(--gold); }
+  .tool{ display:flex; align-items:center; gap:10px; width:100%; background:var(--panel2);
+    border:2px solid var(--border); border-radius:8px; padding:8px; margin-bottom:8px;
+    cursor:pointer; text-align:left; transition:border-color .12s, background .12s; }
+  .tool:hover{border-color:#5a5a74;}
+  .tool.selected{ border-color:var(--accent); background:#324158; box-shadow:0 0 0 2px rgba(109,182,255,.35); }
+  .tool canvas{image-rendering:pixelated; flex:0 0 auto;}
+  .tool-info{flex:1; min-width:0;}
+  .tool-name{font-size:14px; font-weight:bold;}
+  .tool-desc{font-size:10.5px; color:var(--muted); line-height:1.4;}
+  .tool-cost{font-size:12px; color:var(--gold); font-weight:bold;}
+  .tool-cost.lack{color:var(--red);}
+  .help{font-size:11.5px; color:var(--muted); line-height:1.8;}
+  .help b{color:var(--text);}
+  .help .dot{display:inline-block; width:8px; height:8px; vertical-align:baseline;}
+  .foot{color:var(--muted); font-size:11px; text-align:center;}
+</style>
+</head>
+<body>
+  <h1>🐭 农场迷宫灭鼠 · 策略像素</h1>
+  <div class="subtitle">自由游走 · 公母繁殖 · 限时清除</div>
+
+  <div class="topbar">
+    <div class="stat coin">🪙 金币 <b id="coins">120</b></div>
+    <div class="stat goal">🎯 击杀 <b id="kills">0</b>/<span id="killTarget">0</span></div>
+    <div class="stat time">⏱ 时间 <b id="time">0:00</b></div>
+    <div class="stat rnd">🔁 回合 <b id="round">1</b></div>
+    <button class="btn" id="btnPause">暂停</button>
+    <button class="btn" id="btnRestart">重开</button>
+  </div>
+
+  <div class="main">
+    <div class="stage-wrap">
+      <canvas id="game" width="208" height="208"></canvas>
+      <div class="overlay" id="overlayStart">
+        <h2>农场迷宫灭鼠</h2>
+        <p>老鼠在迷宫里自由游走。<br>
+        公母大老鼠同格相遇会<b>繁殖出一窝 3 只小老鼠</b>，<br>
+        小老鼠移动 <b>30 格</b>后长大，性别随机。<br>
+        <b>在限时内清除目标数量</b>即可过关 → 回合递进！</p>
+        <button class="btn primary" id="btnStart">开始回合 1</button>
+      </div>
+      <div class="overlay hidden" id="overlayOver">
+        <h2 id="overTitle">时间到！</h2>
+        <p id="overText"></p>
+        <button class="btn primary" id="btnAgain">再来一局</button>
+      </div>
+    </div>
+
+    <div class="sidebar">
+      <div class="panel">
+        <h3>选择道具（左键放置 / 右键拆除/引爆炸弹）</h3>
+        <div class="tool" data-id="1" id="tool1">
+          <canvas width="48" height="48"></canvas>
+          <div class="tool-info">
+            <div class="tool-name">毒鼠强</div>
+            <div class="tool-desc">老鼠踩上立即死亡（一次性）</div>
+            <div class="tool-cost afford">💰 20</div>
+          </div>
+        </div>
+        <div class="tool" data-id="2" id="tool2">
+          <canvas width="48" height="48"></canvas>
+          <div class="tool-info">
+            <div class="tool-name">炸弹</div>
+            <div class="tool-desc">点两次：先放置再引爆，灭 4 向 3 格</div>
+            <div class="tool-cost afford">💰 50</div>
+          </div>
+        </div>
+        <div class="tool" data-id="3" id="tool3">
+          <canvas width="48" height="48"></canvas>
+          <div class="tool-info">
+            <div class="tool-name">路障</div>
+            <div class="tool-desc">堵住迷宫通道，耐久 3 次撞击</div>
+            <div class="tool-cost afford">💰 30</div>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>老鼠图鉴</h3>
+        <div class="help">
+          <span class="dot" style="background:#a7a7a7"></span> 大·公
+          <span class="dot" style="background:#c9a37d"></span> 大·母
+          <span class="dot" style="background:#e0d6c8"></span> 小老鼠<br><br>
+          <b>繁殖条件：</b>一公一母两只大老鼠同格相遇<br>
+          <b>成长：</b>小老鼠移动 30 格成长，性别随机 1:1
+        </div>
+      </div>
+      <div class="panel">
+        <h3>玩法说明</h3>
+        <div class="help">
+          <b>·</b> 关卡目标：限时内清除指定数量老鼠。<br>
+          <b>·</b> 迷宫无出入口，老鼠全图自由游走。<br>
+          <b>·</b> 老鼠会繁殖，抓紧下手。<br>
+          <b>·</b> 右键拆除道具 / 引爆已放炸弹。<br>
+          <b>·</b> 击杀掉落金币，越到后面目标越多。
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="foot">击杀掉金币 · 清理老鼠养分的迷宫 · 撑过每一回合</div>
+
+<script>
+"use strict";
+/* ================= 基础常量 ================= */
+const N = 40, TILE = 10;
+const WALL_DENSITY = 0.32;  // 内部墙目标密度（连通性优先，实际可能更少）
+const IDLE=0, POISON=1, BOMB=2, BARRIER=3;
+const COSTS = {1:20, 2:50, 3:30};
+const GROW_STEPS = 30;      // 成长所需移动格数
+const LITTER = 3;           // 一窝小老鼠数量
+const POP_CAP = 85;         // 老鼠种群上限
+const TIME_LIMIT = 90;      // 每回合限时（秒）
+const FINAL_ROUND = 5;      // 通关所需回合数（打到第6回合=通关）
+const MATE_CD = 5500;       // 繁殖冷却（毫秒）
+
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = false;
+canvas.width = N*TILE; canvas.height = N*TILE;
+
+/* ================= 状态 ================= */
+let wall=[], item=[], dur=[];
+let rats=[], effects=[];
+let coins=120, round=0, kills=0, killTarget=0, timeLeft=TIME_LIMIT;
+let score=0;
+let selected=0, state='idle';
+let hintTimer=0, hintMsg='', hover=null, ambientTimer=0;
+let audioCtx=null;
+const key=(x,y)=>y*N+x;
+const inb=(x,y)=>x>=0&&y>=0&&x<N&&y<N;
+
+/* ================= 地图生成（随机墙 + 连通性保证） ================= */
+function carveMaze(){
+  wall=[]; item=[]; dur=[];
+  for(let y=0;y<N;y++){
+    wall.push(new Array(N).fill(false));
+    item.push(new Array(N).fill(IDLE));
+    dur.push(new Array(N).fill(0));
+  }
+  // 外框全墙
+  for(let x=0;x<N;x++){ wall[0][x]=true; wall[N-1][x]=true; }
+  for(let y=0;y<N;y++){ wall[y][0]=true; wall[y][N-1]=true; }
+  // 内部随机墙：每插入一面墙都校验全连通，若孤立出区域则回退。
+  // 这样保证所有无墙格子彼此连通，老鼠能到达任意非墙位置。
+  const cells=[];
+  for(let y=1;y<N-1;y++) for(let x=1;x<N-1;x++) cells.push([x,y]);
+  shuffle(cells);
+  const target = Math.floor(cells.length*WALL_DENSITY);
+  let added=0;
+  for(const [x,y] of cells){
+    if(added>=target) break;
+    // 让墙更连片，贴近迷宫质感：周围墙越多越倾向为墙
+    const wallNb = (y>0&&wall[y-1][x]) + (y<N-1&&wall[y+1][x]) +
+                   (x>0&&wall[y][x-1]) + (x<N-1&&wall[y][x+1]);
+    if(wallNb>0 && Math.random()<0.3) continue; // 少量随机，避免纯对角
+    wall[y][x]=true;
+    if(!allConnected()) wall[y][x]=false; else added++;
+  }
+}
+function shuffle(a){ for(let i=a.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [a[i],a[j]]=[a[j],a[i]]; } }
+function allConnected(){
+  const seen=new Uint8Array(N*N);
+  // 找到第一个地板作为连通种子
+  let seed=-1;
+  for(let y=1;y<N-1&&seed<0;y++) for(let x=1;x<N-1;x++)
+    if(!wall[y][x]){ seed=y*N+x; break; }
+  if(seed<0) return true; // 全墙（不会出现）
+  seen[seed]=1; const stack=[seed];
+  while(stack.length){
+    const c=stack.pop(), cx=c%N, cy=(c/N)|0;
+    for(const [d1,d2] of [[1,0],[-1,0],[0,1],[0,-1]]){
+      const nx=cx+d1, ny=cy+d2;
+      if(nx<1||ny<1||nx>N-2||ny>N-2) continue;
+      if(wall[ny][nx]) continue;
+      const nk=ny*N+nx; if(seen[nk]) continue;
+      seen[nk]=1; stack.push(nk);
+    }
+  }
+  for(let y=1;y<N-1;y++) for(let x=1;x<N-1;x++)
+    if(!wall[y][x] && !seen[y*N+x]) return false;
+  return true;
+}
+function floorCells(){
+  const arr=[];
+  for(let y=0;y<N;y++) for(let x=0;x<N;x++) if(!wall[y][x]) arr.push([x,y]);
+  return arr;
+}
+function randomFloor(){ const f=floorCells(); return f[Math.floor(Math.random()*f.length)]; }
+
+/* ================= 音频 ================= */
+function ensureAudio(){ if(!audioCtx){ try{ audioCtx=new (window.AudioContext||window.webkitAudioContext)(); }catch(e){} } }
+function tone(f,dur,type,vol){
+  if(!audioCtx) return;
+  const o=audioCtx.createOscillator(), g=audioCtx.createGain();
+  o.type=type||'square'; o.frequency.value=f; g.gain.value=vol||0.05;
+  o.connect(g); g.connect(audioCtx.destination);
+  o.start(); g.gain.exponentialRampToValueAtTime(0.0001,audioCtx.currentTime+dur);
+  o.stop(audioCtx.currentTime+dur);
+}
+const sfxKill=()=>tone(220,.08,'square',.05);
+const sfxBoom=()=>tone(90,.3,'sawtooth',.09);
+const sfxPlace=()=>tone(520,.05,'square',.05);
+const sfxCant=()=>tone(150,.12,'square',.05);
+const sfxBump=()=>tone(130,.07,'square',.045);
+const sfxBirth=()=>tone(880,.08,'triangle',.05);
+const sfxWin=()=>{tone(392,.1,'square',.05);tone(523,.1,'square',.05);tone(659,.14,'square',.05);};
+
+/* ================= 老鼠创建 ================= */
+function newRat(gx,gy,size,gender){
+  return { gx,gy, px:gx*TILE+TILE/2, py:gy*TILE+TILE/2, tx:gx*TILE+TILE/2, ty:gy*TILE+TILE/2,
+    state:'wait', wait:Math.random()*300, dir:0, face:(Math.random()<.5?1:-1),
+    gender, size, steps:0, breedCd:0, phase:Math.random()*6.28, dead:false };
+}
+function randomGender(){ return Math.random()<0.5?'M':'F'; }
+function spawnInitial(adults){
+  const f=floorCells();
+  for(let i=0;i<adults;i++){
+    const pos=f[Math.floor(Math.random()*f.length)];
+    rats.push(newRat(pos[0],pos[1],'big',randomGender()));
+  }
+  // 加一点小老鼠暖场
+  for(let i=0;i<2;i++){
+    const pos=f[Math.floor(Math.random()*f.length)];
+    rats.push(newRat(pos[0],pos[1],'baby',null));
+  }
+}
+function spawnLitter(gx,gy){
+  if(rats.length + LITTER > POP_CAP) return false;
+  for(let i=0;i<LITTER;i++){
+    const r=newRat(gx,gy,'baby',null);
+    r.wait=Math.random()*350;
+    rats.push(r);
+  }
+  effects.push({type:'heart', x:gx*TILE+TILE/2, y:gy*TILE+TILE/2, t:0});
+  sfxBirth();
+  return true;
+}
+function makePair(){
+  const f=floorCells();
+  const pos=f[Math.floor(Math.random()*f.length)];
+  rats.push(newRat(pos[0],pos[1],'big','M'));
+  const pos2=f[Math.floor(Math.random()*f.length)];
+  rats.push(newRat(pos2[0],pos2[1],'big','F'));
+}
+
+/* ================= 寻路/移动选择（随机游走，避免穿墙） ================= */
+function chooseMove(r){
+  const opts=[];
+  const dd=[[1,0],[-1,0],[0,1],[0,-1]];
+  for(let i=0;i<4;i++){
+    const [dx,dy]=dd[i];
+    const nx=r.gx+dx, ny=r.gy+dy;
+    if(!inb(nx,ny) || wall[ny][nx]) continue;
+    let w=10;
+    if(i===r.dir) w+=7;      // 惯性
+    else if(Math.abs(i-r.dir)===2) w+=2; // 可回头
+    const isBar = item[ny][nx]===BARRIER && dur[ny][nx]>0;
+    if(isBar) w=1;           // 尽量绕开路障
+    opts.push({nx,ny,dx,dy,w,isBar});
+  }
+  if(!opts.length) return null;
+  let tot=opts.reduce((s,o)=>s+o.w,0);
+  let roll=Math.random()*tot;
+  for(const o of opts){ roll-=o.w; if(roll<=0) return o; }
+  return opts[opts.length-1];
+}
+
+/* ================= 回合 ================= */
+function roundStart(n){
+  carveMaze();
+  rats=[]; effects=[];
+  round=n; kills=0;
+  killTarget = 10 + n*6;              // 回合1=16, 2=22, ...
+  timeLeft = TIME_LIMIT + (n-1)*15;   // 时间稍加宽
+  coins = Math.max(coins, 120 + (n-1)*30);
+  ambientTimer = 6000;
+  spawnInitial(6 + n);
+  updateHUD(); updateToolsUI();
+}
+function checkRoundProgress(){
+  if(state!=='running') return;
+  if(kills>=killTarget){
+    // 本回合达成
+    finish(true);
+  }
+}
+
+/* ================= 道具 ================= */
+function placeItem(x,y,type){
+  if(wall[y][x]){ sfxCant(); showHint('那是墙'); return false; }
+  if(item[y][x]!==IDLE){ showHint('该格已有道具'); return false; }
+  if(coins<COSTS[type]){ sfxCant(); showHint('金币不足'); return false; }
+  coins-=COSTS[type];
+  item[y][x]=type;
+  if(type===BARRIER) dur[y][x]=3;
+  sfxPlace();
+  if(type===POISON){
+    const hit=rats.filter(r=>r.gx===x&&r.gy===y&&!r.dead);
+    if(hit.length){ killRats(hit); item[y][x]=IDLE; }
+  }
+  updateToolsUI();
+  return true;
+}
+function removeItem(x,y){
+  const t=item[y][x]; if(t===IDLE) return;
+  coins+=Math.floor(COSTS[t]/2); item[y][x]=IDLE; dur[y][x]=0;
+  tone(300,.05,'square',.04); updateToolsUI();
+}
+function detonate(x,y){
+  if(item[y][x]!==BOMB) return;
+  item[y][x]=IDLE; sfxBoom();
+  effects.push({type:'boom', x:x*TILE+TILE/2, y:y*TILE+TILE/2, t:0});
+  const hit=rats.filter(r=>!r.dead && (Math.abs(r.gx-x)+Math.abs(r.gy-y))<=3);
+  if(hit.length) killRats(hit);
+}
+function killRats(list){
+  for(const r of list){
+    if(r.dead) continue;
+    r.dead=true;
+    kills++; coins+=15; score+=10;
+    effects.push({type:'puff', x:r.px, y:r.py, t:0, color:r.size==='baby'?'#fff3d8':'#ffb060'});
+    sfxKill();
+  }
+  updateHUD(); updateToolsUI();
+  checkRoundProgress();
+}
+function landOn(r){
+  // 踩到毒鼠强
+  if(item[r.gy][r.gx]===POISON){
+    item[r.gy][r.gx]=IDLE;
+    r.dead=true; kills++; coins+=15; score+=10;
+    effects.push({type:'puff', x:r.px, y:r.py, t:0, color:'#b6d7a8'});
+    sfxKill();
+    updateHUD(); updateToolsUI();
+    checkRoundProgress();
+    return;
+  }
+  // 成长：小老鼠移动满 GROW_STEPS
+  if(r.size==='baby' && ++r.steps>=GROW_STEPS){
+    r.size='big'; r.gender=randomGender(); // 公母 1:1
+    effects.push({type:'spark', x:r.px, y:r.py, t:0});
+  } else if(r.size==='big'){
+    r.steps++;
+  }
+  // 繁殖：同格一公一母大老鼠
+  if(r.size==='big'){
+    const boys=rats.filter(r2=>!r2.dead&&r2.size==='big'&&r2.gender==='M'
+      && r2.gx===r.gx&&r2.gy===r.gy&&r2!==r && r2.breedCd<=performance.now());
+    const girls=rats.filter(r2=>!r2.dead&&r2.size==='big'&&r2.gender==='F'
+      && r2.gx===r.gx&&r2.gy===r.gy&&r2!==r && r2.breedCd<=performance.now());
+    const meIsM = r.gender==='M';
+    const mateFemale = meIsM? girls[0] : null;
+    const mateMale   = meIsM? null : boys[0];
+    if(meIsM && girls.length){
+      r.breedCd=performance.now()+MATE_CD; girls[0].breedCd=performance.now()+MATE_CD;
+      spawnLitter(r.gx,r.gy);
+    } else if(!meIsM && boys.length){
+      r.breedCd=performance.now()+MATE_CD; boys[0].breedCd=performance.now()+MATE_CD;
+      spawnLitter(r.gx,r.gy);
+    }
+  }
+}
+
+/* ================= 主循环 ================= */
+let last=performance.now();
+function frame(now){
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  update(dt); render(now);
+  requestAnimationFrame(frame);
+}
+function update(dt){
+  if(state==='running'){
+    timeLeft-=dt;
+    if(timeLeft<=0){ timeLeft=0; updateHUD(); finish(false); update(dt); return; }
+
+    // 环境随机窜入老鼠（保持节奏，非进出口）
+    ambientTimer-=dt*1000;
+    if(ambientTimer<=0){
+      ambientTimer = 6000+Math.random()*5000;
+      if(rats.length < POP_CAP) makePair();
+    }
+
+    const now=performance.now();
+    for(const r of rats){
+      if(r.dead) continue;
+      r.phase += dt*12;
+      if(r.state==='wait'){
+        r.wait-=dt*1000;
+        if(r.wait>0) continue;
+        const mv=chooseMove(r);
+        if(!mv){ r.wait=400; continue; }
+        if(mv.isBar){
+          // 撞路障（不进入），耐久-1
+          dur[mv.ny][mv.nx]--;
+          sfxBump();
+          effects.push({type:'bump', x:mv.nx*TILE+TILE/2, y:mv.ny*TILE+TILE/2, t:0});
+          if(dur[mv.ny][mv.nx]<=0){ item[mv.ny][mv.nx]=IDLE; dur[mv.ny][mv.nx]=0; }
+          r.dir = (mv.dx===-1||mv.dx===1)? mv.dx : r.dir;
+          r.wait = 420+Math.random()*260; // 撞墙后停顿重新找路
+          continue;
+        }
+        // 正常移动
+        r.tx=mv.nx*TILE+TILE/2; r.ty=mv.ny*TILE+TILE/2;
+        if(mv.dx!==0) r.face=mv.dx;
+        r.dir = (mv.dx===1)?0 : (mv.dx===-1)?1 : (mv.dy===1)?2 : 3;
+        r.state='move';
+      } else { // move
+        const dx=r.tx-r.px, dy=r.ty-r.py;
+        const dist=Math.hypot(dx,dy);
+        const step=80*dt;
+        if(dist<=step){
+          r.px=r.tx; r.py=r.ty;
+          r.gx=Math.round((r.px-TILE/2)/TILE);
+          r.gy=Math.round((r.py-TILE/2)/TILE);
+          r.state='wait';
+          r.wait=150+Math.random()*350;
+          landOn(r);
+        } else {
+          r.px+=dx/dist*step; r.py+=dy/dist*step;
+        }
+      }
+    }
+    rats=rats.filter(r=>!r.dead);
+
+    // 特效
+    for(let i=effects.length-1;i>=0;i--){ effects[i].t+=dt; if(effects[i].t>0.6) effects.splice(i,1); }
+    if(hintTimer>0){ hintTimer-=dt; if(hintTimer<=0) hintMsg=''; }
+    updateHUD();
+  } else {
+    for(let i=effects.length-1;i>=0;i--){ effects[i].t+=dt; if(effects[i].t>0.6) effects.splice(i,1); }
+  }
+}
+function finish(won){
+  if(state==='over') return;
+  state='over';
+  document.getElementById('overlayOver').classList.remove('hidden');
+  document.getElementById('btnPause').textContent='暂停';
+  if(won){
+    if(round>=FINAL_ROUND){
+      document.getElementById('overTitle').textContent='🏆 通关！';
+      document.getElementById('overText').innerHTML='你清完了全部 '+(FINAL_ROUND)+' 回合的迷宫。';
+      sfxWin();
+    } else {
+      document.getElementById('overTitle').textContent='✅ 回合 '+round+' 完成！';
+      document.getElementById('overText').innerHTML='接下来是回合 '+(round+1)+'，老鼠目标更多。<br>点击继续。';
+      document.getElementById('btnAgain').textContent='进入回合 '+ (round+1);
+      sfxWin();
+    }
+  } else {
+    document.getElementById('overTitle').textContent='⏱ 时间到！';
+    document.getElementById('overText').innerHTML='本回合需要清除 <b>'+killTarget+'</b> 只，只清了 <b>'+kills+'</b> 只。<br>得分 <b>'+score+'</b>。</div>';
+    document.getElementById('btnAgain').textContent='重新开始';
+  }
+  updateHUD();
+}
+
+/* ================= 渲染 ================= */
+const SPR_POISON=[
+"....GGGG....","...ggGGgg...","..ggGGGGgg..","..gggggggg..","..gg.gg.gg..",
+"..gggggggg..","...gggggg...","....gggg....","..WL....LW..",".WWWW..WWWW.",
+".WWWW..WWWW.","..WW....WW.."];
+const SPR_BOMB=[
+".....BB.....","....BBBB....","...BBBBBB...","..BBBBBBBB..","..BBBBBBBB..",
+"..BBWWWWBB..","..BBWWWWBB..","..BBBBBBBB..","..BBBBBBBB..","...BBBBBB...",
+"....BBBB....",".....BB....."];
+const SPR_BARRIER=[
+"W.W.W.W.W.W.",".W.W.W.W.W.W","W.W.W.W.W.W.",".W.W.W.W.W.W","W.W.W.W.W.W.",
+".W.W.W.W.W.W","W.W.W.W.W.W.",".W.W.W.W.W.W","W.W.W.W.W.W.",".W.W.W.W.W.W",
+"W.W.W.W.W.W.",".W.W.W.W.W.W"];
+const PAL={'G':'#3fd63f','g':'#2aa02a','W':'#8a5a2b','L':'#d8b64a','B':'#26262a','b':'#3a3a40','w':'#e8e6df'};
+function drawSprite(spr,cx,cy,flip){
+  const w=spr[0].length,h=spr.length;
+  for(let r=0;r<h;r++)for(let c=0;c<w;c++){
+    const ch=spr[r][c]; if(ch==='.'||!PAL[ch])continue;
+    ctx.fillStyle=PAL[ch];
+    ctx.fillRect(cx-Math.floor(w/2)+(flip?w-1-c:c), cy-Math.floor(h/2)+r,1,1);
+  }
+}
+function drawToolIcon(cv,type){
+  const c=cv.getContext('2d'); c.imageSmoothingEnabled=false;
+  c.clearRect(0,0,48,48);
+  c.fillStyle='#2f2f40'; c.fillRect(0,0,48,48);
+  c.fillStyle='#23232e';
+  for(let y=0;y<16;y++)for(let x=0;x<16;x++) if((x+y)%2===0) c.fillRect(x*3,y*3,3,3);
+  const spr=type===POISON?SPR_POISON:type===BOMB?SPR_BOMB:SPR_BARRIER;
+  const w=spr[0].length,h=spr.length;
+  for(let r=0;r<h;r++)for(let col=0;col<w;col++){
+    const ch=spr[r][col]; if(ch==='.'||!PAL[ch])continue;
+    c.fillStyle=PAL[ch];
+    c.fillRect(24-Math.floor(w/2)*3+col*3,24-Math.floor(h/2)*3+r*3,3,3);
+  }
+}
+function drawRat(r){
+  const cx=Math.round(r.px), cy=Math.round(r.py);
+  const flip=r.face<0, bob=Math.round(Math.sin(r.phase)*1), big=r.size==='big';
+  ctx.save();
+  if(flip){ ctx.translate(cx,cy); ctx.scale(-1,1); ctx.translate(-cx,-cy); }
+  const bodyC = !big ? '#e0d6c8' : (r.gender==='M' ? '#a7a7a7' : '#c9a37d');
+  const earC = big ? '#f6a8b8' : '#f0cfad';
+  const earI = big ? '#e0788c' : '#e8b28a';
+  // 尾巴
+  ctx.fillStyle=earC;
+  ctx.fillRect(cx,cy-6,1,big?3:2); ctx.fillRect(cx,cy-9,1,big?3:2);
+  ctx.fillRect(cx,cy-12,1,big?3:2); ctx.fillRect(cx+1,cy-14,1,big?2:2);
+  // 身体
+  const hw=big?3:2, hh=big?9:7;
+  ctx.fillStyle=bodyC;
+  ctx.fillRect(cx-hw, cy-4+bob, hw*2+1, hh);
+  ctx.fillRect(cx-hw+1, cy+1+bob, hw*2-1, big?4:3); // 头
+  ctx.fillStyle='#5b5b5b';
+  ctx.fillRect(cx-hw, cy+4+bob, 2,1); ctx.fillRect(cx+hw-1, cy+4+bob,2,1);
+  // 耳朵
+  ctx.fillStyle=earC;
+  ctx.fillRect(cx-hw-1, cy-6+bob, big?3:2,2);
+  ctx.fillRect(cx+hw-1, cy-6+bob, big?3:2,2);
+  ctx.fillStyle=earI;
+  ctx.fillRect(cx-hw, cy-6+bob,1,1); ctx.fillRect(cx+hw, cy-6+bob,1,1);
+  // 眼睛
+  ctx.fillStyle='#1a1a1a';
+  ctx.fillRect(cx-1, cy+ (big?2:1)+bob,1,1);
+  ctx.fillRect(cx+2, cy+ (big?2:1)+bob,1,1);
+  // 公鼠小胡须 / 成长光圈
+  if(big){
+    ctx.fillStyle='#e8e6df';
+    ctx.fillRect(cx-3,cy-6+bob,1,1); ctx.fillRect(cx+3,cy-6+bob,1,1);
+  }
+  ctx.restore();
+}
+function circle(cx,cy,r){ctx.beginPath();ctx.moveTo(cx+r,cy);for(let a=0;a<=Math.PI*2;a+=0.3)ctx.lineTo(cx+Math.cos(a)*r,cy+Math.sin(a)*r);ctx.fill();}
+function render(now){
+  // 地面（迷宫木地板）
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const isWall=wall[y][x];
+    if(!isWall) ctx.fillStyle=(x+y)%2===0?'#c9a15a':'#bd944d';
+    else ctx.fillStyle='#8f8f8f';
+    ctx.fillRect(x*TILE,y*TILE,TILE,TILE);
+    if(!isWall){
+      ctx.fillStyle='rgba(0,0,0,0.08)';
+      if((x*y)%5===0) ctx.fillRect(x*TILE+9,y*TILE+3,2,1);
+    }
+  }
+  // 墙（石砖）
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++) if(wall[y][x]){
+    const h=(x*2654435761+y*40503)%1000;
+    ctx.fillStyle='#7a7a7a'; ctx.fillRect(x*TILE+1,y*TILE+1,TILE-2,TILE-2);
+    ctx.fillStyle='#6a6a6a';
+    ctx.fillRect(x*TILE,y*TILE+(h%2?7:3),TILE,1);
+    ctx.fillRect(x*TILE+(h%3?5:10),y*TILE,1,TILE);
+    ctx.fillStyle='#9c9c9c'; ctx.fillRect(x*TILE+1,y*TILE+1,1,1);
+    ctx.fillRect(x*TILE+TILE-2,y*TILE+TILE-2,1,1);
+  }
+  // 道具
+  for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+    const t=item[y][x], cx=x*TILE+TILE/2, cy=y*TILE+TILE/2;
+    if(t===POISON) drawSprite(SPR_POISON,cx,cy,false);
+    else if(t===BOMB) drawSprite(SPR_BOMB,cx,cy,false);
+    else if(t===BARRIER){
+      drawSprite(SPR_BARRIER,cx,cy,false);
+      for(let i=0;i<dur[y][x];i++){ ctx.fillStyle='#d8b64a'; ctx.fillRect(x*TILE+4+i*3,y*TILE+12,2,2); }
+    }
+  }
+  // 老鼠
+  for(const r of rats) if(!r.dead) drawRat(r);
+  // 选中高亮+虚影
+  if(state==='running'&&hover){
+    const{x,y}=hover, cx=x*TILE+TILE/2, cy=y*TILE+TILE/2;
+    if(!wall[y][x]&&item[y][x]===IDLE&&selected){
+      ctx.globalAlpha=0.55;
+      if(selected===POISON) drawSprite(SPR_POISON,cx,cy,false);
+      else if(selected===BOMB) drawSprite(SPR_BOMB,cx,cy,false);
+      else if(selected===BARRIER) drawSprite(SPR_BARRIER,cx,cy,false);
+      ctx.globalAlpha=1;
+      ctx.strokeStyle = coins<COSTS[selected]?'#ff5a5a':'#6db6ff';
+      ctx.lineWidth=1; ctx.strokeRect(x*TILE+0.5,y*TILE+0.5,TILE-1,TILE-1);
+    }
+  }
+  // 特效
+  for(const e of effects){
+    const a=1-e.t/0.6;
+    if(e.type==='boom'){
+      const R=(e.t/0.6)*3.4*TILE;
+      ctx.globalAlpha=a*.8; ctx.fillStyle='#ffb347'; circle(e.x,e.y,R);
+      ctx.globalAlpha=a*.6; ctx.fillStyle='#ffdd99'; circle(e.x,e.y,R*.6);
+      ctx.globalAlpha=1;
+    } else if(e.type==='puff'){
+      ctx.globalAlpha=a; ctx.fillStyle=e.color; circle(e.x,e.y,2+a*4); ctx.globalAlpha=1;
+    } else if(e.type==='bump'){
+      ctx.globalAlpha=a*.6; ctx.strokeStyle='#fff'; ctx.lineWidth=1;
+      ctx.strokeRect(e.x-2-a*2,e.y-2-a*2,4+a*4,4+a*4); ctx.globalAlpha=1;
+    } else if(e.type==='heart'){
+      ctx.globalAlpha=a; ctx.fillStyle='#ff7ab0';
+      ctx.fillRect(e.x-3, e.y-2, 2, 2); ctx.fillRect(e.x+1, e.y-2, 2, 2);
+      ctx.fillRect(e.x-4, e.y-1, 3, 3); ctx.fillRect(e.x+1, e.y-1, 3, 3);
+      ctx.fillRect(e.x-3, e.y, 8, 4);
+      ctx.globalAlpha=1;
+    } else if(e.type==='spark'){
+      ctx.globalAlpha=a; ctx.strokeStyle='#fff2c0'; ctx.lineWidth=1;
+      ctx.strokeRect(e.x-3,e.y-3,6,6); ctx.globalAlpha=1;
+    }
+  }
+  // 提示
+  if(hintMsg&&hintTimer>0){
+    ctx.globalAlpha=Math.min(1,hintTimer*2);
+    ctx.font='bold 14px monospace';
+    const tw=ctx.measureText(hintMsg).width;
+    ctx.fillStyle='#000000aa';
+    ctx.fillRect(canvas.width/2-tw/2-8, canvas.height-40, tw+16, 22);
+    ctx.fillStyle='#fff';
+    ctx.fillText(hintMsg, canvas.width/2-tw/2, canvas.height-23);
+    ctx.globalAlpha=1;
+  }
+}
+
+/* ================= HUD ================= */
+function updateHUD(){
+  document.getElementById('coins').textContent=coins;
+  document.getElementById('kills').textContent=kills;
+  document.getElementById('killTarget').textContent=killTarget;
+  document.getElementById('round').textContent=round;
+  const m=Math.floor(timeLeft/60), s=Math.floor(timeLeft%60);
+  const tEl=document.getElementById('time');
+  tEl.textContent=m+':'+String(s).padStart(2,'0');
+  tEl.style.color = timeLeft<15? '#ff8060':'' ;
+}
+function updateToolsUI(){
+  for(let t=1;t<=3;t++){
+    const el=document.getElementById('tool'+t);
+    const cost=el.querySelector('.tool-cost');
+    cost.textContent='💰 '+COSTS[t];
+    cost.className='tool-cost '+(coins>=COSTS[t]?'':'lack');
+    el.classList.toggle('selected',selected===t);
+  }
+}
+function showHint(m){hintMsg=m;hintTimer=2;}
+
+/* ================= 交互 ================= */
+function cellFromEvent(e){
+  const r=canvas.getBoundingClientRect();
+  const x=Math.floor((e.clientX-r.left)/r.width*N);
+  const y=Math.floor((e.clientY-r.top)/r.height*N);
+  return (x<0||y<0||x>=N||y>=N)?null:{x,y};
+}
+canvas.addEventListener('mousemove',e=>hover=cellFromEvent(e));
+canvas.addEventListener('mouseleave',()=>hover=null);
+canvas.addEventListener('click',e=>{
+  ensureAudio(); const c=cellFromEvent(e); if(!c||state!=='running')return;
+  if(item[c.y][c.x]===BOMB && !selected){ detonate(c.x,c.y); return; }
+  if(selected) placeItem(c.x,c.y,selected);
+});
+canvas.addEventListener('contextmenu',e=>{
+  e.preventDefault(); ensureAudio();
+  const c=cellFromEvent(e); if(!c||state!=='running')return;
+  if(item[c.y][c.x]===BOMB) detonate(c.x,c.y);
+  else if(item[c.y][c.x]!==IDLE) removeItem(c.x,c.y);
+});
+
+/* ================= 按钮 ================= */
+document.getElementById('btnStart').onclick=()=>{ ensureAudio(); startRun(1); };
+document.getElementById('btnAgain').onclick=()=>{
+  ensureAudio();
+  if(state==='over' && document.getElementById('overTitle').textContent.startsWith('✅') && round<FINAL_ROUND){
+    document.getElementById('overlayOver').classList.add('hidden');
+    startRun(round+1);
+  } else {
+    reset();
+  }
+};
+document.getElementById('btnRestart').onclick=()=>{ ensureAudio(); reset(); };
+document.getElementById('btnPause').onclick=()=>{
+  if(state==='running'){ state='paused'; document.getElementById('btnPause').textContent='继续'; }
+  else if(state==='paused'){ state='running'; document.getElementById('btnPause').textContent='暂停'; last=performance.now(); }
+};
+for(let t=1;t<=3;t++){
+  document.getElementById('tool'+t).addEventListener('click',()=>{ ensureAudio(); selected=(selected===t)?0:t; updateToolsUI(); });
+}
+
+function startRun(n){
+  state='running';
+  document.getElementById('overlayStart').classList.add('hidden');
+  document.getElementById('overlayOver').classList.add('hidden');
+  document.getElementById('btnPause').textContent='暂停';
+  roundStart(n);
+  showHint('清除 '+killTarget+' 只老鼠再走！');
+}
+function reset(){
+  score=0; coins=120; round=0; kills=0; killTarget=0; timeLeft=TIME_LIMIT; selected=0;
+  state='idle';
+  carveMaze(); rats=[]; effects=[];
+  document.getElementById('overlayOver').classList.add('hidden');
+  document.getElementById('overlayStart').classList.remove('hidden');
+  document.getElementById('overTitle').textContent='时间到！';
+  document.getElementById('btnPause').textContent='暂停';
+  updateHUD(); updateToolsUI();
+  render(performance.now());
+}
+
+/* ================= 初始化 ================= */
+carveMaze();
+for(let t=1;t<=3;t++) drawToolIcon(document.getElementById('tool'+t).querySelector('canvas'), t);
+updateHUD(); updateToolsUI();
+render(performance.now());
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

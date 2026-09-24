@@ -1,0 +1,8 @@
+# 部署说明文档（本地保留，不入仓库）
+GITHUB_PAGES_DEPLOY.md
+# 与 index.html 内容重复的原始文件
+farm-rat-clear.html
+# 打包缓存
+.trae-html-share-packages/
+# 截图
+.screenshots/
