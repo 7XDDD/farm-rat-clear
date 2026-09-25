@@ -70,11 +70,10 @@
 </head>
 <body>
   <h1>🐭 农场迷宫灭鼠 · 策略像素</h1>
-  <div class="subtitle">自由游走 · 边界环绕 · 公母繁殖 · 限时清除</div>
+  <div class="subtitle">自由游走 · 边界环绕 · 公母繁殖 · 清空过关</div>
 
   <div class="topbar">
-    <div class="stat goal">🎯 击杀 <b id="kills">0</b>/<span id="killTarget">0</span></div>
-    <div class="stat time">⏱ 时间 <b id="time">0:00</b></div>
+    <div class="stat goal">🐭 剩余老鼠 <b id="rats">0</b> 只</div>
     <div class="stat rnd">🔁 回合 <b id="round">1</b></div>
     <button class="btn" id="btnPause">暂停</button>
     <button class="btn" id="btnRestart">重开</button>
@@ -86,15 +85,15 @@
       <div class="overlay" id="overlayStart">
         <h2>农场迷宫灭鼠</h2>
         <p>老鼠在迷宫里自由游走。<br>
-        公母大老鼠同格相遇会<b>繁殖出一窝 3 只小老鼠</b>，<br>
-        小老鼠移动 <b>30 格</b>后长大，性别随机。<br>
-        <b>在限时内清除目标数量</b>即可过关 → 回合递进！</p>
+          <b>清除地图上的全部老鼠</b>即可过关，进入商店升级。<br>
+          一公一母大老鼠相遇，母鼠 <b>50%</b> 怀孕：<br>
+          怀 <b>15 格</b>显怀、再 <b>15 格</b>生下一窝 <b>4 只</b>小老鼠。</p>
         <button class="btn primary" id="btnStart">开始回合 1</button>
       </div>
-      <div class="overlay hidden" id="overlayOver">
-        <h2 id="overTitle">时间到！</h2>
-        <p id="overText"></p>
-        <button class="btn primary" id="btnAgain">再来一局</button>
+      <div class="overlay hidden" id="overlayShop">
+        <h2 id="shopTitle">🎉 回合完成！</h2>
+        <p id="shopText">清空啦！选择一项能力提升（每关继承）：</p>
+        <div id="shopChoices" style="display:flex;flex-direction:column;gap:8px;width:100%;align-items:stretch;"></div>
       </div>
     </div>
 
@@ -129,42 +128,45 @@
       <div class="panel">
         <h3>老鼠图鉴</h3>
         <div class="help">
-          <span class="dot" style="background:#a7a7a7"></span> 大·公
-          <span class="dot" style="background:#c9a37d"></span> 大·母
+          <span class="dot" style="background:#222222"></span> 大·公
+          <span class="dot" style="background:#9a9a9a"></span> 大·母
           <span class="dot" style="background:#e0d6c8"></span> 小老鼠<br><br>
-          <b>繁殖条件：</b>一公一母两只大老鼠同格相遇<br>
-          <b>成长：</b>小老鼠移动 30 格成长，性别随机 1:1
+          <b>繁殖：</b>公母相遇，母鼠 50% 怀孕<br>
+          <b>孕程：</b>怀 15 格显怀，再 15 格生一窝 4 只<br>
+          <b>成长：</b>小老鼠移 30 格长大，性别随机 1:1（跑得更快）
         </div>
       </div>
       <div class="panel">
         <h3>玩法说明</h3>
         <div class="help">
-          <b>·</b> 目标：限时内清除指定数量老鼠。<br>
+          <b>·</b> 目标：清除地图上的<b>全部老鼠</b>即可过关。<br>
           <b>·</b> 迷宫无边界，老鼠出去会从对面进来。<br>
-          <b>·</b> 老鼠会繁殖，抓紧下手。<br>
-          <b>·</b> 道具免费，用掉后 <b>10 秒</b>自动补 1 个。<br>
+          <b>·</b> 过关进入<b>商店</b>，选 1 项能力提升（每关继承）。<br>
+          <b>·</b> 道具免费，用掉后自动冷却补充。<br>
           <b>·</b> 炸弹放置后自动引爆；右键拆除道具。
         </div>
       </div>
     </div>
   </div>
-  <div class="foot">清除迷宫里的老鼠 · 撑过每一回合 · 道具免费、冷却补充</div>
+  <div class="foot">清除地图上的全部老鼠 · 过关进商店升级 · 能力永久继承</div>
 
 <script>
 "use strict";
 /* ================= 基础常量 ================= */
-const N = 15, TILE = 10;    // 15×15 网格
+const N = 20, TILE = 10;    // 20×20 网格
 const WALL_DENSITY = 0.28;  // 墙目标密度（无边界墙；连通性优先，实际可能更少）
 const IDLE=0, POISON=1, BOMB=2, BARRIER=3;
-const INIT_STOCK = 6;       // 每种道具初始 / 上限数量
-const COOLDOWN = 10;        // 道具补充冷却（秒）
+const BASE_STOCK = 6;       // 每种道具初始 / 上限的基准数量
+const BASE_CD = 10;         // 道具冷却基准（秒）
 const FUSE_TIME = 2;        // 炸弹放置后自动引爆延迟（秒）
-const GROW_STEPS = 30;      // 成长所需移动格数
-const LITTER = 3;           // 一窝小老鼠数量
-const POP_CAP = 35;         // 老鼠种群上限（15×15 地图容量小）
-const TIME_LIMIT = 90;      // 每回合限时（秒）
-const FINAL_ROUND = 5;      // 通关所需回合数（打到第6回合=通关）
+const GROW_STEPS = 30;      // 小老鼠成长所需移动格数
+const LITTER = 4;           // 一窝小老鼠数量
+const POP_CAP = 60;         // 老鼠种群上限
 const MATE_CD = 5500;       // 繁殖冷却（毫秒）
+const PREG_STAGE1 = 15;     // 怀孕显怀所需格数
+const PREG_STAGE2 = 15;     // 显怀后再移动生产所需格数
+const BIG_SPEED = 160;      // 大老鼠移动速度（px/s，较原 80 翻倍）
+const BABY_SPEED = 200;     // 小老鼠移动速度（更快）
 
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
@@ -174,12 +176,17 @@ canvas.width = N*TILE; canvas.height = N*TILE;
 /* ================= 状态 ================= */
 let wall=[], item=[], dur=[], fuse=[];
 let rats=[], effects=[];
-let stock={1:INIT_STOCK,2:INIT_STOCK,3:INIT_STOCK}, cooldown={1:0,2:0,3:0};
-let round=0, kills=0, killTarget=0, timeLeft=TIME_LIMIT;
-let score=0;
+let stock={1:BASE_STOCK,2:BASE_STOCK,3:BASE_STOCK}, cooldown={1:0,2:0,3:0};
+// 能力提升（每关继承）
+let maxStock={1:BASE_STOCK,2:BASE_STOCK,3:BASE_STOCK};   // 初始/存储上限
+let cdReduction={1:0,2:0,3:0};                            // 冷却减少（秒）
+let freeChance={1:0,2:0,3:0};                             // 使用不消耗次数概率
+let round=0;
 let selected=0, state='idle';
-let hintTimer=0, hintMsg='', hover=null, ambientTimer=0;
+let hintTimer=0, hintMsg='', hover=null;
 let audioCtx=null;
+let shopChoices=[];                                       // 当前商店刷新项
+const getCd=t=>Math.max(0.5, BASE_CD - cdReduction[t]);
 const key=(x,y)=>y*N+x;
 const wrapMod=(v,n)=>((v%n)+n)%n;
 const wrapDist=(a,b)=>Math.min(Math.abs(a-b), N-Math.abs(a-b));
@@ -265,7 +272,9 @@ function newRat(gx,gy,size,gender){
   const fx=gx*TILE+TILE/2, fy=gy*TILE+TILE/2;
   return { gx,gy, fx,fy, px:fx, py:fy, tfx:fx, tfy:fy,
     state:'wait', wait:Math.random()*300, dir:0, face:(Math.random()<.5?1:-1),
-    gender, size, steps:0, breedCd:0, phase:Math.random()*6.28, dead:false };
+    gender, size, speed:(size==='baby'?BABY_SPEED:BIG_SPEED),
+    steps:0, breedCd:0, phase:Math.random()*6.28,
+    pregnant:false, pregSteps:0, pregStage:0, dead:false };
 }
 function randomGender(){ return Math.random()<0.5?'M':'F'; }
 function spawnInitial(adults){
@@ -291,55 +300,46 @@ function spawnLitter(gx,gy){
   sfxBirth();
   return true;
 }
-function makePair(){
-  const f=floorCells();
-  const pos=f[Math.floor(Math.random()*f.length)];
-  rats.push(newRat(pos[0],pos[1],'big','M'));
-  const pos2=f[Math.floor(Math.random()*f.length)];
-  rats.push(newRat(pos2[0],pos2[1],'big','F'));
-}
 
-/* ================= 寻路/移动选择（随机游走，避免穿墙） ================= */
+/* ================= 寻路/移动选择（直线优先，碰墙才转向） ================= */
 function chooseMove(r){
-  const opts=[];
   const dd=[[1,0],[-1,0],[0,1],[0,-1]];
-  for(let i=0;i<4;i++){
+  const back=r.dir^1;                 // 回头方向
+  const sides=[];
+  for(let i=0;i<4;i++) if(i!==r.dir && i!==back) sides.push(i);
+  // 优先直走，其次随机侧向，最后才回头
+  const order=[r.dir];
+  if(Math.random()<0.5){ order.push(sides[0], sides[1]); }
+  else { order.push(sides[1], sides[0]); }
+  order.push(back);
+  for(const i of order){
     const [dx,dy]=dd[i];
     const nx=wrapMod(r.gx+dx,N), ny=wrapMod(r.gy+dy,N);
     if(wall[ny][nx]) continue;
-    let w=10;
-    if(i===r.dir) w+=7;      // 惯性
-    else if(Math.abs(i-r.dir)===2) w+=2; // 可回头
     const isBar = item[ny][nx]===BARRIER && dur[ny][nx]>0;
-    if(isBar) w=1;           // 尽量绕开路障
-    opts.push({nx,ny,dx,dy,w,isBar});
+    return {nx,ny,dx,dy,isBar};
   }
-  if(!opts.length) return null;
-  let tot=opts.reduce((s,o)=>s+o.w,0);
-  let roll=Math.random()*tot;
-  for(const o of opts){ roll-=o.w; if(roll<=0) return o; }
-  return opts[opts.length-1];
+  return null; // 四面皆墙（连通性会避免）
+}
+function turnAway(dir){
+  // 撞路障后转向：垂直方向（左右↔上下），随机
+  const vertical = (dir===2||dir===3);
+  return vertical ? (Math.random()<0.5?0:1) : (Math.random()<0.5?2:3);
 }
 
 /* ================= 回合 ================= */
 function roundStart(n){
   carveMaze();
   rats=[]; effects=[];
-  round=n; kills=0;
-  killTarget = 10 + n*6;              // 回合1=16, 2=22, ...
-  timeLeft = TIME_LIMIT + (n-1)*15;   // 时间稍加宽
-  stock={1:INIT_STOCK,2:INIT_STOCK,3:INIT_STOCK};
+  round=n;
+  stock={1:maxStock[1],2:maxStock[2],3:maxStock[3]};
   cooldown={1:0,2:0,3:0};
-  ambientTimer = 6000;
-  spawnInitial(6 + n);
+  spawnInitial(8 + n*4);
   updateHUD(); updateToolsUI();
 }
 function checkRoundProgress(){
   if(state!=='running') return;
-  if(kills>=killTarget){
-    // 本回合达成
-    finish(true);
-  }
+  if(!rats.some(r=>!r.dead)) finish();
 }
 
 /* ================= 道具 ================= */
@@ -347,7 +347,8 @@ function placeItem(x,y,type){
   if(wall[y][x]){ sfxCant(); showHint('那是墙'); return false; }
   if(item[y][x]!==IDLE){ showHint('该格已有道具'); return false; }
   if(stock[type]<=0){ sfxCant(); showHint('该道具暂无库存，等待冷却'); return false; }
-  stock[type]--; cooldown[type]=COOLDOWN;
+  const free = freeChance[type]>0 && Math.random()<freeChance[type];
+  if(!free){ stock[type]--; cooldown[type]=getCd(type); }
   item[y][x]=type;
   if(type===BARRIER) dur[y][x]=3;
   if(type===BOMB) fuse[y][x]=FUSE_TIME;
@@ -375,7 +376,6 @@ function killRats(list){
   for(const r of list){
     if(r.dead) continue;
     r.dead=true;
-    kills++; score+=10;
     effects.push({type:'puff', x:r.px, y:r.py, t:0, color:r.size==='baby'?'#fff3d8':'#ffb060'});
     sfxKill();
   }
@@ -386,35 +386,45 @@ function landOn(r){
   // 踩到毒鼠强
   if(item[r.gy][r.gx]===POISON){
     item[r.gy][r.gx]=IDLE;
-    r.dead=true; kills++; score+=10;
+    r.dead=true;
     effects.push({type:'puff', x:r.px, y:r.py, t:0, color:'#b6d7a8'});
     sfxKill();
     updateHUD(); updateToolsUI();
     checkRoundProgress();
     return;
   }
-  // 成长：小老鼠移动满 GROW_STEPS
+  // 成长：小老鼠移动满 GROW_STEPS 后长大（速度降为大老鼠速度）
   if(r.size==='baby' && ++r.steps>=GROW_STEPS){
-    r.size='big'; r.gender=randomGender(); // 公母 1:1
+    r.size='big'; r.gender=randomGender(); r.speed=BIG_SPEED;
     effects.push({type:'spark', x:r.px, y:r.py, t:0});
   } else if(r.size==='big'){
     r.steps++;
   }
-  // 繁殖：同格一公一母大老鼠
+  // 繁殖：一公一母大老鼠同格相遇，母鼠 50% 概率怀孕
   if(r.size==='big'){
-    const boys=rats.filter(r2=>!r2.dead&&r2.size==='big'&&r2.gender==='M'
-      && r2.gx===r.gx&&r2.gy===r.gy&&r2!==r && r2.breedCd<=performance.now());
-    const girls=rats.filter(r2=>!r2.dead&&r2.size==='big'&&r2.gender==='F'
-      && r2.gx===r.gx&&r2.gy===r.gy&&r2!==r && r2.breedCd<=performance.now());
-    const meIsM = r.gender==='M';
-    const mateFemale = meIsM? girls[0] : null;
-    const mateMale   = meIsM? null : boys[0];
-    if(meIsM && girls.length){
-      r.breedCd=performance.now()+MATE_CD; girls[0].breedCd=performance.now()+MATE_CD;
-      spawnLitter(r.gx,r.gy);
-    } else if(!meIsM && boys.length){
-      r.breedCd=performance.now()+MATE_CD; boys[0].breedCd=performance.now()+MATE_CD;
-      spawnLitter(r.gx,r.gy);
+    const now=performance.now();
+    if(r.gender==='F' && !r.pregnant && r.breedCd<=now){
+      const boy=rats.find(r2=>!r2.dead && r2.size==='big' && r2.gender==='M'
+        && r2.gx===r.gx && r2.gy===r.gy && r2!==r && r2.breedCd<=now);
+      if(boy){
+        if(Math.random()<0.5){
+          r.pregnant=true; r.pregSteps=0; r.pregStage=0;
+          r.breedCd=now+MATE_CD; boy.breedCd=now+MATE_CD;
+          effects.push({type:'heart', x:r.px, y:r.py, t:0});
+          sfxBirth();
+        } else {
+          r.breedCd=now+800; // 未怀孕，短暂冷却避免同格反复判定
+        }
+      }
+    }
+    // 孕程：每落一格累计；怀满 15 格显怀，再 15 格生产一窝
+    if(r.pregnant){
+      r.pregSteps++;
+      if(r.pregSteps===PREG_STAGE1) r.pregStage=1;
+      if(r.pregSteps>=PREG_STAGE1+PREG_STAGE2){
+        r.pregnant=false; r.pregSteps=0; r.pregStage=0;
+        spawnLitter(r.gx,r.gy);
+      }
     }
   }
 }
@@ -428,23 +438,13 @@ function frame(now){
 }
 function update(dt){
   if(state==='running'){
-    timeLeft-=dt;
-    if(timeLeft<=0){ timeLeft=0; updateHUD(); finish(false); update(dt); return; }
-
-    // 环境随机窜入老鼠（保持节奏，非进出口）
-    ambientTimer-=dt*1000;
-    if(ambientTimer<=0){
-      ambientTimer = 6000+Math.random()*5000;
-      if(rats.length < POP_CAP) makePair();
-    }
-
     // 道具冷却补充：库存不满时倒计时，到点 +1
     for(let t=1;t<=3;t++){
-      if(stock[t] < INIT_STOCK){
+      if(stock[t] < maxStock[t]){
         cooldown[t] -= dt;
         if(cooldown[t] <= 0){
           stock[t]++;
-          cooldown[t] = (stock[t] < INIT_STOCK) ? COOLDOWN : 0;
+          cooldown[t] = (stock[t] < maxStock[t]) ? getCd(t) : 0;
           updateStockUI();
         }
       }
@@ -473,8 +473,8 @@ function update(dt){
           sfxBump();
           effects.push({type:'bump', x:mv.nx*TILE+TILE/2, y:mv.ny*TILE+TILE/2, t:0});
           if(dur[mv.ny][mv.nx]<=0){ item[mv.ny][mv.nx]=IDLE; dur[mv.ny][mv.nx]=0; }
-          r.dir = (mv.dx===-1||mv.dx===1)? mv.dx : r.dir;
-          r.wait = 420+Math.random()*260; // 撞后重新找路
+          r.dir = turnAway(r.dir);   // 撞路障后转向其它方向
+          r.wait = 420+Math.random()*260;
           continue;
         }
         // 正常移动（沿方向连续移动，跨边界时环绕到对面）
@@ -485,7 +485,7 @@ function update(dt){
       } else { // move
         const dx=r.tfx-r.fx, dy=r.tfy-r.fy;
         const dist=Math.hypot(dx,dy);
-        const step=80*dt;
+        const step=r.speed*dt;
         if(dist<=step){
           r.fx=r.tfx; r.fy=r.tfy;
           r.gx=gridX(r.fx); r.gy=gridY(r.fy);
@@ -500,6 +500,7 @@ function update(dt){
       }
     }
     rats=rats.filter(r=>!r.dead);
+    checkRoundProgress();
 
     // 特效
     for(let i=effects.length-1;i>=0;i--){ effects[i].t+=dt; if(effects[i].t>0.6) effects.splice(i,1); }
@@ -509,29 +510,55 @@ function update(dt){
     for(let i=effects.length-1;i>=0;i--){ effects[i].t+=dt; if(effects[i].t>0.6) effects.splice(i,1); }
   }
 }
-function finish(won){
-  if(state==='over') return;
-  state='over';
-  document.getElementById('overlayOver').classList.remove('hidden');
+function finish(){
+  if(state!=='running') return;
+  state='shop';
   document.getElementById('btnPause').textContent='暂停';
-  if(won){
-    if(round>=FINAL_ROUND){
-      document.getElementById('overTitle').textContent='🏆 通关！';
-      document.getElementById('overText').innerHTML='你清完了全部 '+(FINAL_ROUND)+' 回合的迷宫。';
-      sfxWin();
-    } else {
-      document.getElementById('overTitle').textContent='✅ 回合 '+round+' 完成！';
-      document.getElementById('overText').innerHTML='接下来是回合 '+(round+1)+'，老鼠目标更多。<br>点击继续。';
-      document.getElementById('btnAgain').textContent='进入回合 '+ (round+1);
-      sfxWin();
-    }
-  } else {
-    document.getElementById('overTitle').textContent='⏱ 时间到！';
-    document.getElementById('overText').innerHTML='本回合需要清除 <b>'+killTarget+'</b> 只，只清了 <b>'+kills+'</b> 只。<br>得分 <b>'+score+'</b>。</div>';
-    document.getElementById('btnAgain').textContent='重新开始';
-  }
-  updateHUD();
+  sfxWin();
+  openShop();
 }
+const TOOL_NAMES={1:'毒鼠强',2:'炸弹',3:'路障'};
+function rollUpgrades(){
+  const types=['cd','cap','free'];
+  const ups=[];
+  for(let i=0;i<3;i++){
+    let u=null;
+    for(let tries=0;tries<20;tries++){
+      const cand={type:types[Math.floor(Math.random()*3)], tool:1+Math.floor(Math.random()*3)};
+      if(!ups.some(x=>x.type===cand.type && x.tool===cand.tool)){ u=cand; break; }
+    }
+    if(!u) u={type:types[Math.floor(Math.random()*3)], tool:1+Math.floor(Math.random()*3)};
+    ups.push(u);
+  }
+  return ups;
+}
+function upgradeLabel(u){
+  const name=TOOL_NAMES[u.tool];
+  if(u.type==='cd') return name+' 冷却时间 −0.5 秒';
+  if(u.type==='cap') return name+' 初始/上限 +1';
+  return name+' 使用不消耗概率 +3%';
+}
+function applyUpgrade(u){
+  if(u.type==='cd') cdReduction[u.tool]+=0.5;
+  else if(u.type==='cap') maxStock[u.tool]+=1;
+  else freeChance[u.tool]+=0.03;
+}
+function openShop(){
+  shopChoices=rollUpgrades();
+  const box=document.getElementById('shopChoices');
+  box.innerHTML='';
+  document.getElementById('shopTitle').textContent='🎉 回合 '+round+' 完成！';
+  for(const u of shopChoices){
+    const b=document.createElement('button');
+    b.className='btn';
+    b.textContent=upgradeLabel(u);
+    b.onclick=()=>{ ensureAudio(); applyUpgrade(u); closeShop(); startRun(round+1); };
+    box.appendChild(b);
+  }
+  document.getElementById('overlayShop').classList.remove('hidden');
+  updateToolsUI();
+}
+function closeShop(){ document.getElementById('overlayShop').classList.add('hidden'); }
 
 /* ================= 渲染 ================= */
 const SPR_POISON=[
@@ -574,7 +601,7 @@ function drawRat(r){
   const flip=r.face<0, bob=Math.round(Math.sin(r.phase)*1), big=r.size==='big';
   ctx.save();
   if(flip){ ctx.translate(cx,cy); ctx.scale(-1,1); ctx.translate(-cx,-cy); }
-  const bodyC = !big ? '#e0d6c8' : (r.gender==='M' ? '#a7a7a7' : '#c9a37d');
+  const bodyC = !big ? '#e0d6c8' : (r.gender==='M' ? '#222222' : '#9a9a9a');
   const earC = big ? '#f6a8b8' : '#f0cfad';
   const earI = big ? '#e0788c' : '#e8b28a';
   // 尾巴
@@ -594,8 +621,15 @@ function drawRat(r){
   ctx.fillRect(cx+hw-1, cy-6+bob, big?3:2,2);
   ctx.fillStyle=earI;
   ctx.fillRect(cx-hw, cy-6+bob,1,1); ctx.fillRect(cx+hw, cy-6+bob,1,1);
-  // 眼睛
-  ctx.fillStyle='#1a1a1a';
+  // 怀孕显怀：肚子隆起
+  if(r.pregnant && r.pregStage>=1){
+    ctx.fillStyle=bodyC;
+    ctx.fillRect(cx-hw, cy+2+bob, hw*2+1, 5);
+    ctx.fillStyle='#f3d9c0';
+    ctx.fillRect(cx-hw+1, cy+3+bob, hw*2-1, 3);
+  }
+  // 眼睛（公鼠黑色身体用白眼珠，保证可见）
+  ctx.fillStyle = (big && r.gender==='M') ? '#ffffff' : '#1a1a1a';
   ctx.fillRect(cx-1, cy+ (big?2:1)+bob,1,1);
   ctx.fillRect(cx+2, cy+ (big?2:1)+bob,1,1);
   // 公鼠小胡须 / 成长光圈
@@ -702,17 +736,13 @@ function render(now){
 
 /* ================= HUD ================= */
 function updateHUD(){
-  document.getElementById('kills').textContent=kills;
-  document.getElementById('killTarget').textContent=killTarget;
+  const alive = rats.filter(r=>!r.dead).length;
+  document.getElementById('rats').textContent=alive;
   document.getElementById('round').textContent=round;
-  const m=Math.floor(timeLeft/60), s=Math.floor(timeLeft%60);
-  const tEl=document.getElementById('time');
-  tEl.textContent=m+':'+String(s).padStart(2,'0');
-  tEl.style.color = timeLeft<15? '#ff8060':'' ;
   for(let t=1;t<=3;t++){
     const cdEl=document.getElementById('cd'+t);
     if(cdEl){
-      cdEl.textContent = (stock[t] < INIT_STOCK) ? ('⏳ '+Math.max(0,Math.ceil(cooldown[t]))+'s') : '';
+      cdEl.textContent = (stock[t] < maxStock[t]) ? ('⏳ '+Math.max(0,Math.ceil(cooldown[t]))+'s') : '';
     }
   }
 }
@@ -767,15 +797,6 @@ canvas.addEventListener('contextmenu',e=>{
 
 /* ================= 按钮 ================= */
 document.getElementById('btnStart').onclick=()=>{ ensureAudio(); startRun(1); };
-document.getElementById('btnAgain').onclick=()=>{
-  ensureAudio();
-  if(state==='over' && document.getElementById('overTitle').textContent.startsWith('✅') && round<FINAL_ROUND){
-    document.getElementById('overlayOver').classList.add('hidden');
-    startRun(round+1);
-  } else {
-    reset();
-  }
-};
 document.getElementById('btnRestart').onclick=()=>{ ensureAudio(); reset(); };
 document.getElementById('btnPause').onclick=()=>{
   if(state==='running'){ state='paused'; document.getElementById('btnPause').textContent='继续'; }
@@ -788,20 +809,22 @@ for(let t=1;t<=3;t++){
 function startRun(n){
   state='running';
   document.getElementById('overlayStart').classList.add('hidden');
-  document.getElementById('overlayOver').classList.add('hidden');
+  document.getElementById('overlayShop').classList.add('hidden');
   document.getElementById('btnPause').textContent='暂停';
   roundStart(n);
-  showHint('清除 '+killTarget+' 只老鼠再走！');
+  showHint('清除地图上的全部老鼠！');
 }
 function reset(){
-  score=0; round=0; kills=0; killTarget=0; timeLeft=TIME_LIMIT; selected=0;
-  stock={1:INIT_STOCK,2:INIT_STOCK,3:INIT_STOCK};
+  round=0; selected=0;
+  stock={1:BASE_STOCK,2:BASE_STOCK,3:BASE_STOCK};
   cooldown={1:0,2:0,3:0};
+  maxStock={1:BASE_STOCK,2:BASE_STOCK,3:BASE_STOCK};
+  cdReduction={1:0,2:0,3:0};
+  freeChance={1:0,2:0,3:0};
   state='idle';
   carveMaze(); rats=[]; effects=[];
-  document.getElementById('overlayOver').classList.add('hidden');
+  document.getElementById('overlayShop').classList.add('hidden');
   document.getElementById('overlayStart').classList.remove('hidden');
-  document.getElementById('overTitle').textContent='时间到！';
   document.getElementById('btnPause').textContent='暂停';
   updateHUD(); updateToolsUI();
   render(performance.now());
