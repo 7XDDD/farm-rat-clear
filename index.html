@@ -348,7 +348,11 @@ function placeItem(x,y,type){
   if(item[y][x]!==IDLE){ showHint('该格已有道具'); return false; }
   if(stock[type]<=0){ sfxCant(); showHint('该道具暂无库存，等待冷却'); return false; }
   const free = freeChance[type]>0 && Math.random()<freeChance[type];
-  if(!free){ stock[type]--; cooldown[type]=getCd(type); }
+  if(!free){
+    // 仅从满库存开始消耗时启动补货；连续放置保留当前倒计时。
+    if(stock[type]===maxStock[type]) cooldown[type]=getCd(type);
+    stock[type]--;
+  }
   item[y][x]=type;
   if(type===BARRIER) dur[y][x]=3;
   if(type===BOMB) fuse[y][x]=FUSE_TIME;
